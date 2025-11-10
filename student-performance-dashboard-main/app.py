@@ -89,9 +89,32 @@ footer { visibility: hidden !important; }
 # Firebase Auth (REST API)
 # ===========================
 @st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def load_firebase_config():
-    with open("firebase_config.json", "r", encoding="utf-8") as f:
+    # 1) Try Streamlit Cloud Secrets first
+    if "firebase" in st.secrets:
+        conf = dict(st.secrets["firebase"])
+        pid = conf.get("projectId")
+        if pid and "databaseURL" not in conf:
+            conf["databaseURL"] = f"https://{pid}.firebaseio.com"
+        for key in ["apiKey", "authDomain", "projectId", "appId"]:
+            if not conf.get(key):
+                raise ValueError(f"firebase secret missing '{key}'")
+        return conf
+
+    # 2) Fallback to local file for local development
+    here = os.path.dirname(__file__)
+    path = os.path.join(here, "firebase_config.json")
+    with open(path, "r", encoding="utf-8") as f:
         conf = json.load(f)
+    pid = conf.get("projectId")
+    if pid and "databaseURL" not in conf:
+        conf["databaseURL"] = f"https://{pid}.firebaseio.com"
+    for key in ["apiKey", "authDomain", "projectId", "appId"]:
+        if not conf.get(key):
+            raise ValueError(f"firebase_config.json missing '{key}'")
+    return conf
+
     for key in ["apiKey", "authDomain", "projectId", "appId"]:
         if not conf.get(key):
             raise ValueError(f"firebase_config.json missing '{key}'")
