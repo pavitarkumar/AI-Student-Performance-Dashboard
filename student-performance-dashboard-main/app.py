@@ -1,5 +1,5 @@
 # app.py
-# AI Student Performance Dashboard (forces light theme, sticky header, Firebase REST auth, Home/Team pages)
+# AI Student Performance Dashboard (keeps Streamlit header, sticky custom header, Firebase REST auth, Home/Team pages)
 
 import os
 import json
@@ -13,10 +13,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # ---------------------------
-# Image helpers
+# Small helpers for images
 # ---------------------------
 def img_to_base64(path: str) -> str:
-    """Convert local images to Base64 (returns '' if not found)."""
     try:
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
@@ -24,7 +23,6 @@ def img_to_base64(path: str) -> str:
         return ""
 
 def _to_b64(path: str) -> str:
-    """Alias used by page_home; ensures no crash if image is missing."""
     return img_to_base64(path)
 
 # ===========================
@@ -32,12 +30,12 @@ def _to_b64(path: str) -> str:
 # ===========================
 st.set_page_config(page_title="AI Student Performance Dashboard", layout="wide")
 
-# ---- Global CSS: FORCE LIGHT THEME (works better on Brave) ----
+# ===========================
+# Global CSS (keep Streamlit header; push our header below it)
+# ===========================
 st.markdown("""
 <style>
-/* Hard-force a light palette regardless of browser/system */
-:root, html, body, [data-testid="stAppViewContainer"], [data-baseweb="baseweb"] {
-  color-scheme: light !important;
+:root {
   --bg: #ffffff;
   --bg-muted: #f7f7f9;
   --text: #101828;
@@ -47,36 +45,43 @@ st.markdown("""
   --card: #ffffff;
 }
 
-html, body, .stApp { background: var(--bg) !important; color: var(--text) !important; }
+/* keep Streamlit header; add a little breathing room for page content */
 .block-container { padding-top: 0.75rem !important; max-width: 100% !important; }
 
-/* Move Login / Sign-up dialog lower */
+/* Make dialogs drop a bit lower so they don't overlap the toolbar */
 .stDialog > div { margin-top: 160px !important; }
 
-/* Custom app header: visible & sticky */
+/* Our custom sticky header sits BELOW the Streamlit toolbar */
 #app-header{
-  position: sticky; top: 0; z-index: 1000; backdrop-filter: blur(8px);
-  background: rgba(255,255,255,0.92) !important; border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 72px;                /* <<-- If your title is still clipped, increase this (e.g., 80px, 88px) */
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  background: rgba(255,255,255,0.92) !important;
+  border-bottom: 1px solid var(--border);
 }
 
+/* Header content */
 .header-row{ display:flex; align-items:center; gap:16px; padding:14px 8px; }
 .h-title{ font-size:30px; font-weight:800; line-height:1.15; margin:0; color: var(--text); }
+
+/* Header buttons (only inside our header) */
 #nav-row, #actions-row{ display:flex; align-items:center; gap:10px; }
 #actions-row{ margin-left:auto; }
-
 #nav-row .stButton>button, #actions-row .stButton>button{
-  border:1px solid var(--border) !important; background: var(--bg-muted) !important;
-  border-radius:10px !important; padding:10px 16px !important; font-size:14px !important;
-  height:42px !important; line-height:20px !important; color: var(--text) !important; box-shadow: none !important;
+  border:1px solid var(--border) !important;
+  background: var(--bg-muted) !important;
+  border-radius:10px !important;
+  padding:10px 16px !important;
+  font-size:14px !important;
+  height:42px !important;
+  line-height:20px !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
 }
 #nav-row .stButton>button[data-active="true"]{ background:#eaeef6 !important; }
 
-/* Hide Streamlit chrome */
-header[data-testid="stHeader"] { display: none !important; }
-div[data-testid="stToolbar"] { display: none !important; }
-footer { visibility: hidden !important; }
-
-/* Cards */
+/* Three image cards row on Home */
 .img3-row{ display:grid; gap:24px; grid-template-columns: repeat(3, 1fr); width:100%; }
 @media (max-width: 1100px){ .img3-row{ grid-template-columns: 1fr; } }
 .imgcard{ display:flex; flex-direction:column; border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow: var(--shadow); background:var(--card); width:100%; }
@@ -89,32 +94,9 @@ footer { visibility: hidden !important; }
 # Firebase Auth (REST API)
 # ===========================
 @st.cache_resource(show_spinner=False)
-@st.cache_resource(show_spinner=False)
 def load_firebase_config():
-    # 1) Try Streamlit Cloud Secrets first
-    if "firebase" in st.secrets:
-        conf = dict(st.secrets["firebase"])
-        pid = conf.get("projectId")
-        if pid and "databaseURL" not in conf:
-            conf["databaseURL"] = f"https://{pid}.firebaseio.com"
-        for key in ["apiKey", "authDomain", "projectId", "appId"]:
-            if not conf.get(key):
-                raise ValueError(f"firebase secret missing '{key}'")
-        return conf
-
-    # 2) Fallback to local file for local development
-    here = os.path.dirname(__file__)
-    path = os.path.join(here, "firebase_config.json")
-    with open(path, "r", encoding="utf-8") as f:
+    with open("firebase_config.json", "r", encoding="utf-8") as f:
         conf = json.load(f)
-    pid = conf.get("projectId")
-    if pid and "databaseURL" not in conf:
-        conf["databaseURL"] = f"https://{pid}.firebaseio.com"
-    for key in ["apiKey", "authDomain", "projectId", "appId"]:
-        if not conf.get(key):
-            raise ValueError(f"firebase_config.json missing '{key}'")
-    return conf
-
     for key in ["apiKey", "authDomain", "projectId", "appId"]:
         if not conf.get(key):
             raise ValueError(f"firebase_config.json missing '{key}'")
@@ -123,7 +105,6 @@ def load_firebase_config():
 FB = load_firebase_config()
 API_KEY = FB["apiKey"]
 
-# Support Emulator
 EMULATOR_HOST = os.getenv("FIREBASE_AUTH_EMULATOR_HOST")  # e.g. "localhost:9099"
 if EMULATOR_HOST:
     IDTK = f"http://{EMULATOR_HOST}/identitytoolkit.googleapis.com/v1"
@@ -132,7 +113,6 @@ else:
     IDTK = "https://identitytoolkit.googleapis.com/v1"
     SECTK = "https://securetoken.googleapis.com/v1"
 
-# Robust session + POST helper
 _session = requests.Session()
 _retry = Retry(
     total=4, connect=3, read=3, status=3, backoff_factor=0.6,
@@ -167,7 +147,6 @@ def _post(url: str, payload: dict) -> dict:
             detail = {"error": {"message": r.text}}
         raise RuntimeError(f"Firebase error {r.status_code}: {detail}") from e
 
-# Email/password helpers
 def sign_up_email_password(email: str, password: str, display_name: str | None = None) -> dict:
     data = _post(f"{IDTK}/accounts:signUp?key={API_KEY}",
                  {"email": email, "password": password, "returnSecureToken": True})
@@ -225,7 +204,6 @@ def go(route: str):
 # Helpers
 # ===========================
 def _logo_data_uri(path: str = "logo.png") -> str | None:
-    """Return a data: URI for the given logo file, or None if missing."""
     if not os.path.exists(path):
         return None
     ext = os.path.splitext(path)[1].lower()
@@ -279,7 +257,9 @@ def predictor_dialog():
         st.subheader("Prediction")
         st.metric("Expected Percentage", f"{score:.1f}%")
         st.metric("Predicted Grade", to_grade(score))
-        st.caption("Predictions are generated by a well-trained, validated model and should be interpreted alongside teacher judgment and class context.")
+        st.caption(
+            "Predictions are produced by a trained, validated model and are intended to complement teacher expertise and class context."
+        )
 
 # ===========================
 # Auth dialog (Login / Sign up / Forgot / Verify)
@@ -343,7 +323,7 @@ def auth_dialog():
                         if st.session_state.user.get("refreshToken"):
                             newt = refresh_id_token(st.session_state.user["refreshToken"])
                             st.session_state.user["idToken"] = newt["idToken"]
-                            st.session_state.user["refreshToken"] = newt["refreshToken"]
+                            st.session_state.user["refreshToken"] = newt["RefreshToken"]
                         info = lookup_account(st.session_state.user["idToken"])
                         st.session_state.user["verified"] = bool(info.get("emailVerified"))
                         st.success("Status refreshed.")
@@ -351,7 +331,7 @@ def auth_dialog():
                         st.error("Could not refresh status."); st.caption(str(e))
 
 # ===========================
-# Header (logo + title + nav + actions)
+# Header (logo + title + nav + actions) — Streamlit header remains visible above
 # ===========================
 def render_header():
     st.markdown('<div id="app-header">', unsafe_allow_html=True)
@@ -361,7 +341,7 @@ def render_header():
     with c_logo:
         data_uri = _logo_data_uri("logo.png")
         if data_uri is None:
-            st.error("logo.png not found next to app.py")
+            st.write("")  # keep layout if logo missing
         else:
             st.markdown(
                 f'''
@@ -381,6 +361,8 @@ def render_header():
         if st.session_state.user:
             badge = "✅ verified" if st.session_state.user.get("verified") else "⚠️ unverified"
             st.caption(f"Signed in as **{st.session_state.user['name']}** ({badge})")
+        else:
+            st.caption("Upload your class Excel files to analyze performance by class and subject.")
 
     with c_nav:
         st.markdown('<div id="nav-row">', unsafe_allow_html=True)
@@ -392,6 +374,7 @@ def render_header():
             if st.button("Team", key="nav_team", use_container_width=True):
                 go("team")
         active_first = (st.session_state.route == "home")
+        # mark active tab
         st.markdown(
             f"<script>Array.from(parent.document.querySelectorAll('#nav-row .stButton > button'))"
             f".forEach((b,i)=>b.setAttribute('data-active', ((i===0)==={str(active_first).lower()}) ? 'true':'false'));</script>",
@@ -409,8 +392,7 @@ def render_header():
             else:
                 if st.button("Sign out", use_container_width=True, key="logout_btn"):
                     st.session_state.user = None
-                    st.success("Signed out.")
-                    st.rerun()
+                    st.success("Signed out."); st.rerun()
         with ac2:
             if st.button("AI Predict", use_container_width=True, key="predict_btn"):
                 predictor_dialog()
@@ -448,7 +430,7 @@ RENAME_MAP = {
 # HOME PAGE
 # ===========================
 def page_home():
-    require_auth()  # gate: must be logged in
+    require_auth()
 
     feature_b64 = _to_b64("feature.png")
     benefit_b64 = _to_b64("benefit.png")
@@ -458,7 +440,7 @@ def page_home():
         return (f'<img src="data:image/png;base64,{b64}" alt="{alt}">' if b64
                 else f'<div style="padding:40px;text-align:center;opacity:.7;">Add {alt} image</div>')
 
-    # Cards
+    # Cards row
     st.markdown(f"""
       <div class="img3-row">
         <div class="imgcard">
@@ -481,231 +463,229 @@ def page_home():
         "Upload Excel files (one per class)", type=["xlsx"], accept_multiple_files=True,
     )
 
-    if uploaded_files:
-        dfs = [pd.read_excel(f, engine="openpyxl") for f in uploaded_files]
-        all_df = pd.concat(dfs, ignore_index=True)
-        st.success("✅ Files uploaded and combined successfully!")
+    if not uploaded_files:
+        st.info("👆 Upload Excel files to start analysis.")
+        st.caption("Tip: Keep columns: 'Class', 'Reg.no', 'Name' and your 6 subjects exactly named.")
+        return
 
-        # Normalize to your fixed six subjects
-        all_df = all_df.rename(columns=RENAME_MAP)
-        for sub in SUBJECTS:
-            if sub not in all_df.columns:
-                all_df[sub] = 0
-        all_df[SUBJECTS] = all_df[SUBJECTS].fillna(0)
+    # Read + normalize
+    dfs = [pd.read_excel(f, engine="openpyxl") for f in uploaded_files]
+    all_df = pd.concat(dfs, ignore_index=True)
+    st.success("✅ Files uploaded and combined successfully!")
 
-        # Validate core columns
-        missing_core = [c for c in ["Class", "Reg.no", "Name"] if c not in all_df.columns]
-        if missing_core:
-            st.error(f"Missing required columns: {', '.join(missing_core)}")
-            return
+    all_df = all_df.rename(columns=RENAME_MAP)
+    for sub in SUBJECTS:
+        if sub not in all_df.columns:
+            all_df[sub] = 0
+    all_df[SUBJECTS] = all_df[SUBJECTS].fillna(0)
 
-        # ===== Filters row (kept & extended) =====
-        c1, c2, c3 = st.columns([1.4, 1.4, 2])
-        with c1:
-            class_list = sorted(all_df["Class"].astype(str).unique())
-            selected_class = st.selectbox("🏫 Select Class", class_list)
-        with c2:
-            name_query = st.text_input("🔎 Search by name (optional)", "")
-        with c3:
-            subject_for_hist = st.selectbox("📈 Distribution by Subject (optional)", ["(none)"] + SUBJECTS)
+    # Validate core columns
+    missing_core = [c for c in ["Class", "Reg.no", "Name"] if c not in all_df.columns]
+    if missing_core:
+        st.error(f"Missing required columns: {', '.join(missing_core)}")
+        return
 
-        # Apply class + optional name filter
-        cls_df = all_df[all_df["Class"].astype(str) == str(selected_class)].copy()
-        if name_query.strip():
-            q = name_query.strip().lower()
-            cls_df = cls_df[cls_df["Name"].str.lower().str.contains(q, na=False)]
+    # ===== Filters =====
+    c1, c2, c3 = st.columns([1.4, 1.4, 2])
+    with c1:
+        class_list = sorted(all_df["Class"].astype(str).unique())
+        selected_class = st.selectbox("🏫 Select Class", class_list)
+    with c2:
+        name_query = st.text_input("🔎 Search by name (optional)", "")
+    with c3:
+        subject_for_hist = st.selectbox("📈 Distribution by Subject (optional)", ["(none)"] + SUBJECTS)
 
-        class_subjects = SUBJECTS
-        # Totals & percent
-        cls_df["Total Marks"] = cls_df[class_subjects].sum(axis=1)
-        cls_df["Percentage"] = (cls_df["Total Marks"] / (len(class_subjects) * 100) * 100).round(2)
+    # Apply filters
+    cls_df = all_df[all_df["Class"].astype(str) == str(selected_class)].copy()
+    if name_query.strip():
+        q = name_query.strip().lower()
+        cls_df = cls_df[cls_df["Name"].astype(str).str.lower().str.contains(q, na=False)]
 
-        # ===== KPIs row =====
-        k1, k2, k3, k4 = st.columns(4)
-        with k1: st.metric("Students in Class", len(cls_df))
-        with k2: st.metric("Class Average %", f"{cls_df['Percentage'].mean():.2f}" if len(cls_df) else "0.00")
-        with k3:
-            pass_rate = 0.0
-            if len(cls_df):
-                passes = (cls_df[class_subjects] >= 40).all(axis=1).sum()
-                pass_rate = 100.0 * passes / len(cls_df)
-            st.metric("Pass Rate (all subjects ≥ 40)", f"{pass_rate:.1f}%")
-        with k4:
-            topper = cls_df["Percentage"].max() if len(cls_df) else 0
-            st.metric("Topper %", f"{topper:.2f}")
+    class_subjects = SUBJECTS
 
-        st.subheader(f"📘 Subjects for {selected_class}")
-        st.write(", ".join(class_subjects))
+    # Totals & percent
+    cls_df["Total Marks"] = cls_df[class_subjects].sum(axis=1)
+    cls_df["Percentage"] = (cls_df["Total Marks"] / (len(class_subjects) * 100) * 100).round(2)
 
-        # Subject-wise averages (current class)
-        avg_data = cls_df[class_subjects].mean().reset_index()
-        avg_data.columns = ["Subject", "Average (%)"]
-        st.subheader(f"📊 Subject-wise Average — {selected_class}")
-        st.dataframe(avg_data, use_container_width=True)
+    # ===== KPIs =====
+    k1, k2, k3, k4 = st.columns(4)
+    with k1: st.metric("Students in Class", len(cls_df))
+    with k2: st.metric("Class Average %", f"{(cls_df['Percentage'].mean() if len(cls_df) else 0):.2f}")
+    with k3:
+        pass_rate = 0.0
+        if len(cls_df):
+            passes = (cls_df[class_subjects] >= 40).all(axis=1).sum()
+            pass_rate = 100.0 * passes / len(cls_df)
+        st.metric("Pass Rate (all subjects ≥ 40)", f"{pass_rate:.1f}%")
+    with k4:
+        topper = cls_df["Percentage"].max() if len(cls_df) else 0
+        st.metric("Topper %", f"{topper:.2f}")
 
-        fig = px.bar(avg_data, x="Subject", y="Average (%)", color="Subject",
-                     title=f"Average Marks — {selected_class}")
-        st.plotly_chart(fig, use_container_width=True)
+    st.subheader(f"📘 Subjects for {selected_class}")
+    st.write(", ".join(class_subjects))
 
-        # Optional histogram for chosen subject
-        if subject_for_hist != "(none)":
-            st.subheader(f"📈 Distribution — {subject_for_hist}")
-            hist_fig = px.histogram(cls_df, x=subject_for_hist, nbins=10, title=f"{subject_for_hist} Score Distribution")
-            st.plotly_chart(hist_fig, use_container_width=True)
+    # Subject-wise averages (current class)
+    avg_data = cls_df[class_subjects].mean().reset_index()
+    avg_data.columns = ["Subject", "Average (%)"]
+    st.subheader(f"📊 Subject-wise Average — {selected_class}")
+    st.dataframe(avg_data, use_container_width=True)  # <-- fixed API
 
-        # Top 3 table
-        st.subheader(f"🏆 Top 3 Students — {selected_class}")
-        top3 = cls_df.sort_values(by="Total Marks", ascending=False).head(3).copy()
-        top3["Rank"] = ["1st", "2nd", "3rd"][:len(top3)]
-        st.dataframe(top3[["Rank", "Reg.no", "Name", "Total Marks", "Percentage"]], use_container_width=True)
+    fig = px.bar(avg_data, x="Subject", y="Average (%)", color="Subject",
+                 title=f"Average Marks — {selected_class}")
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Weak students
-        st.subheader(f"⚠️ Weak Students (<40 in any subject) — {selected_class}")
-        melted = cls_df.melt(id_vars=["Reg.no", "Name"], value_vars=class_subjects,
-                             var_name="Subject", value_name="Marks")
-        weak_df = melted[melted["Marks"] < 40].sort_values(by=["Subject", "Marks"])
-        st.dataframe(weak_df, use_container_width=True)
+    # Optional histogram for chosen subject
+    if subject_for_hist != "(none)":
+        st.subheader(f"📈 Distribution — {subject_for_hist}")
+        hist_fig = px.histogram(cls_df, x=subject_for_hist, nbins=10, title=f"{subject_for_hist} Score Distribution")
+        st.plotly_chart(hist_fig, use_container_width=True)
 
-        # ===== One-click exports (current class) =====
-        st.subheader("📥 Export Reports")
-        cdl1, cdl2, cdl3 = st.columns(3)
+    # Top 3 table
+    st.subheader(f"🏆 Top 3 Students — {selected_class}")
+    top3 = cls_df.sort_values(by="Total Marks", ascending=False).head(3).copy()
+    top3["Rank"] = ["1st", "2nd", "3rd"][:len(top3)]
+    st.dataframe(top3[["Rank", "Reg.no", "Name", "Total Marks", "Percentage"]], use_container_width=True)  # fixed
 
-        # Export Subject-wise Average (current class)
-        with cdl1:
-            avg_bytes = io.BytesIO()
-            avg_data.to_excel(avg_bytes, index=False, engine="openpyxl")
-            st.download_button(
-                "⬇️ Download Subject Averages (XLSX)",
-                data=avg_bytes.getvalue(),
-                file_name=f"{selected_class}_subject_averages.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+    # Weak students
+    st.subheader(f"⚠️ Weak Students (<40 in any subject) — {selected_class}")
+    melted = cls_df.melt(id_vars=["Reg.no", "Name"], value_vars=class_subjects,
+                         var_name="Subject", value_name="Marks")
+    weak_df = melted[melted["Marks"] < 40].sort_values(by=["Subject", "Marks"])
+    st.dataframe(weak_df, use_container_width=True)  # fixed
 
-        # Export Top 3 (current class)
-        with cdl2:
-            top3_bytes = io.BytesIO()
-            top3[["Rank", "Reg.no", "Name", "Total Marks", "Percentage"]].to_excel(
-                top3_bytes, index=False, engine="openpyxl"
-            )
-            st.download_button(
-                "⬇️ Download Top 3 (XLSX)",
-                data=top3_bytes.getvalue(),
-                file_name=f"{selected_class}_top3.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+    # ===== One-click exports (current class) =====
+    st.subheader("📥 Export Reports")
+    cdl1, cdl2, cdl3 = st.columns(3)
 
-        # Export Weak students (current class)
-        with cdl3:
-            weak_bytes = io.BytesIO()
-            weak_df.to_excel(weak_bytes, index=False, engine="openpyxl")
-            st.download_button(
-                "⬇️ Download Weak Students (XLSX)",
-                data=weak_bytes.getvalue(),
-                file_name=f"{selected_class}_weak_students.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-        # ===== Full Class Report (multi-sheet) =====
-        st.markdown("##### 📘 Full Class Report (multi-sheet)")
-        full_bytes = io.BytesIO()
-        with pd.ExcelWriter(full_bytes, engine="openpyxl") as writer:
-            cls_df[["Reg.no", "Name"] + class_subjects + ["Total Marks", "Percentage"]].to_excel(
-                writer, sheet_name="Students", index=False
-            )
-            avg_data.to_excel(writer, sheet_name="Subject Averages", index=False)
-            top3[["Rank", "Reg.no", "Name", "Total Marks", "Percentage"]].to_excel(
-                writer, sheet_name="Top 3", index=False
-            )
-            weak_df.to_excel(writer, sheet_name="Weak Students (<40)", index=False)
+    with cdl1:
+        avg_bytes = io.BytesIO()
+        avg_data.to_excel(avg_bytes, index=False, engine="openpyxl")
         st.download_button(
-            "⬇️ Download Full Class Report (XLSX)",
-            data=full_bytes.getvalue(),
-            file_name=f"{selected_class}_report.xlsx",
+            "⬇️ Download Subject Averages (XLSX)",
+            data=avg_bytes.getvalue(),
+            file_name=f"{selected_class}_subject_averages.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-        # ===========================
-        # 📈 Class Comparisons (All Classes)
-        # ===========================
-        st.subheader("📈 Class Comparisons (All Classes)")
-
-        # A. Subject Averages by Class (Grouped)
-        st.markdown("**A. Subject Averages by Class (Grouped)**")
-        comp_avg = (
-            all_df.groupby("Class")[class_subjects]
-            .mean()
-            .reset_index()
+    with cdl2:
+        top3_bytes = io.BytesIO()
+        top3[["Rank", "Reg.no", "Name", "Total Marks", "Percentage"]].to_excel(
+            top3_bytes, index=False, engine="openpyxl"
         )
-        comp_long = comp_avg.melt(id_vars="Class", var_name="Subject", value_name="Average (%)")
-        fig_group = px.bar(
-            comp_long, x="Subject", y="Average (%)", color="Class",
-            barmode="group", title="Subject Averages by Class (Grouped)"
+        st.download_button(
+            "⬇️ Download Top 3 (XLSX)",
+            data=top3_bytes.getvalue(),
+            file_name=f"{selected_class}_top3.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        st.plotly_chart(fig_group, use_container_width=True)
 
-        col_dlA, _, _ = st.columns([1, 1, 1])
-        with col_dlA:
-            comp_bytes = io.BytesIO()
-            comp_avg.to_excel(comp_bytes, index=False, engine="openpyxl")
-            st.download_button(
-                "⬇️ Download Class vs Subject Averages (XLSX)",
-                data=comp_bytes.getvalue(),
-                file_name="class_subject_averages.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-        # B. Class Strength by Class (counts)
-        st.markdown("**B. Class Strength (Student Count) by Class**")
-        strength = all_df.groupby("Class")["Reg.no"].nunique().reset_index(name="Students")
-        fig_strength = px.bar(
-            strength, x="Class", y="Students", title="Students per Class"
+    with cdl3:
+        weak_bytes = io.BytesIO()
+        weak_df.to_excel(weak_bytes, index=False, engine="openpyxl")
+        st.download_button(
+            "⬇️ Download Weak Students (XLSX)",
+            data=weak_bytes.getvalue(),
+            file_name=f"{selected_class}_weak_students.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        st.plotly_chart(fig_strength, use_container_width=True)
 
-        col_dlB, _, _ = st.columns([1, 1, 1])
-        with col_dlB:
-            str_bytes = io.BytesIO()
-            strength.to_excel(str_bytes, index=False, engine="openpyxl")
-            st.download_button(
-                "⬇️ Download Class Strength (XLSX)",
-                data=str_bytes.getvalue(),
-                file_name="class_strength.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-        # C. Pass Rate by Class (all subjects ≥ 40)
-        st.markdown("**C. Pass Rate by Class (all subjects ≥ 40)**")
-        tmp = all_df.copy()
-        tmp["PassAll"] = (tmp[class_subjects] >= 40).all(axis=1)
-        pass_rate = (
-            tmp.groupby("Class")["PassAll"].mean()
-            .mul(100).reset_index(name="Pass Rate (%)")
+    # ===== Full Class Report (multi-sheet) =====
+    st.markdown("##### 📘 Full Class Report (multi-sheet)")
+    full_bytes = io.BytesIO()
+    with pd.ExcelWriter(full_bytes, engine="openpyxl") as writer:
+        cls_df[["Reg.no", "Name"] + class_subjects + ["Total Marks", "Percentage"]].to_excel(
+            writer, sheet_name="Students", index=False
         )
-        fig_pass = px.bar(
-            pass_rate, x="Class", y="Pass Rate (%)", title="Pass Rate by Class (All Subjects ≥ 40)"
+        avg_data.to_excel(writer, sheet_name="Subject Averages", index=False)
+        top3[["Rank", "Reg.no", "Name", "Total Marks", "Percentage"]].to_excel(
+            writer, sheet_name="Top 3", index=False
         )
-        st.plotly_chart(fig_pass, use_container_width=True)
+        weak_df.to_excel(writer, sheet_name="Weak Students (<40)", index=False)
+    st.download_button(
+        "⬇️ Download Full Class Report (XLSX)",
+        data=full_bytes.getvalue(),
+        file_name=f"{selected_class}_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
-        col_dlC, _, _ = st.columns([1, 1, 1])
-        with col_dlC:
-            pass_bytes = io.BytesIO()
-            pass_rate.to_excel(pass_bytes, index=False, engine="openpyxl")
-            st.download_button(
-                "⬇️ Download Pass Rate by Class (XLSX)",
-                data=pass_bytes.getvalue(),
-                file_name="class_pass_rate.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+    # ===========================
+    # 📈 Class Comparisons (All Classes)
+    # ===========================
+    st.subheader("📈 Class Comparisons (All Classes)")
 
-    else:
-        st.info("👆 Upload Excel files to start analysis.")
-        st.caption("Tip: Keep columns: 'Class', 'Reg.no', 'Name' and your 6 subjects exactly named.")
+    # A. Subject Averages by Class (Grouped)
+    st.markdown("**A. Subject Averages by Class (Grouped)**")
+    comp_avg = (
+        all_df.groupby(all_df["Class"].astype(str))[class_subjects]
+        .mean()
+        .reset_index()
+    )
+    comp_long = comp_avg.melt(id_vars="Class", var_name="Subject", value_name="Average (%)")
+    fig_group = px.bar(
+        comp_long, x="Subject", y="Average (%)", color="Class",
+        barmode="group", title="Subject Averages by Class (Grouped)"
+    )
+    st.plotly_chart(fig_group, use_container_width=True)
+
+    col_dlA, _, _ = st.columns([1, 1, 1])
+    with col_dlA:
+        comp_bytes = io.BytesIO()
+        comp_avg.to_excel(comp_bytes, index=False, engine="openpyxl")
+        st.download_button(
+            "⬇️ Download Class vs Subject Averages (XLSX)",
+            data=comp_bytes.getvalue(),
+            file_name="class_subject_averages.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    # B. Class Strength (Student Count) by Class
+    st.markdown("**B. Class Strength (Student Count) by Class**")
+    strength = all_df.groupby(all_df["Class"].astype(str))["Reg.no"].nunique().reset_index(name="Students")
+    fig_strength = px.bar(
+        strength, x="Class", y="Students", title="Students per Class"
+    )
+    st.plotly_chart(fig_strength, use_container_width=True)
+
+    col_dlB, _, _ = st.columns([1, 1, 1])
+    with col_dlB:
+        str_bytes = io.BytesIO()
+        strength.to_excel(str_bytes, index=False, engine="openpyxl")
+        st.download_button(
+            "⬇️ Download Class Strength (XLSX)",
+            data=str_bytes.getvalue(),
+            file_name="class_strength.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    # C. Pass Rate by Class (all subjects ≥ 40)
+    st.markdown("**C. Pass Rate by Class (all subjects ≥ 40)**")
+    tmp = all_df.copy()
+    tmp["PassAll"] = (tmp[class_subjects] >= 40).all(axis=1)
+    pass_rate = (
+        tmp.groupby(tmp["Class"].astype(str))["PassAll"].mean()
+        .mul(100).reset_index(name="Pass Rate (%)")
+    )
+    fig_pass = px.bar(
+        pass_rate, x="Class", y="Pass Rate (%)", title="Pass Rate by Class (All Subjects ≥ 40)"
+    )
+    st.plotly_chart(fig_pass, use_container_width=True)
+
+    col_dlC, _, _ = st.columns([1, 1, 1])
+    with col_dlC:
+        pass_bytes = io.BytesIO()
+        pass_rate.to_excel(pass_bytes, index=False, engine="openpyxl")
+        st.download_button(
+            "⬇️ Download Pass Rate by Class (XLSX)",
+            data=pass_bytes.getvalue(),
+            file_name="class_pass_rate.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
 # ===========================
 # TEAM PAGE
 # ===========================
 def page_team():
-    require_auth()  # gate: must be logged in
+    require_auth()
 
     st.subheader("👤 Team")
 
@@ -747,18 +727,16 @@ Full-stack developer and data enthusiast. I build clean dashboards, scalable bac
         st.markdown(html, unsafe_allow_html=True)
 
 # ===========================
-# Render + Routing (with global gate option)
+# Render + Routing
 # ===========================
 def render_and_route():
     render_header()
 
-    # Global gate (optional)
     if not st.session_state.user:
         st.markdown("### 🔐 Please log in to use the dashboard.")
         if st.button("Login / Sign up", key="login_gate_btn_main"): auth_dialog()
         st.stop()
 
-    # user is logged in → show pages
     if st.session_state.route == "home":
         page_home()
     elif st.session_state.route == "team":
